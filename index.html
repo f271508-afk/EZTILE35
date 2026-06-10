@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>外牆磚計畫 PRO | 起磚點精準分割 v9.2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { user-select: none; }
+        body { background: #f0f4f9; font-family: 'Inter', system-ui, -apple-system, 'Microsoft JhengHei', sans-serif; }
+        .canvas-bg { background-color: #eef2f6; background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 24px 24px; }
+        .panel { background: rgba(255,255,255,0.96); border-radius: 1.5rem; box-shadow: 0 8px 20px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.02); backdrop-filter: blur(0px); }
+        #mainCanvas { touch-action: none; border-radius: 20px; cursor: crosshair; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.25); transition: all 0.1s ease; }
+        .ortho-active { background: #f59e0b !important; color: white !important; border-color: #f59e0b !important; box-shadow: 0 2px 6px rgba(245,158,11,0.3); }
+        input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { opacity: 0.5; }
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    </style>
+</head>
+<body class="p-4 md:p-5 lg:p-6">
+    <div class="max-w-[1600px] mx-auto">
+        <header class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 gap-5">
+            <div class="flex items-center gap-3">
+                <div class="bg-gradient-to-br from-slate-700 to-slate-900 w-10 h-10 rounded-2xl flex items-center justify-center shadow-md">
+                    <span class="text-white text-xl font-black">⌗</span>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-tight bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">外牆磚計畫 PRO <span class="text-sky-600 text-xl">v9.2</span></h1>
+                    <p class="text-slate-500 text-[11px] font-semibold">依起磚點精準分割｜邊界裁切標註｜開口扣除</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-4">
+                <input type="text" id="header-work-location" placeholder="施工位置 / 專案名稱" class="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold w-44 outline-none focus:ring-2 focus:ring-sky-300">
+                <button onclick="exportExteriorPDF()" id="btn-pdf-exterior" class="bg-indigo-700 hover:bg-indigo-800 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg transition-all text-sm flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    <span>匯出外牆磚報告</span>
+                </button>
+                
+                <div class="bg-gradient-to-r from-slate-600 to-slate-800 text-white px-5 py-2 rounded-xl flex gap-5 items-center shadow-lg">
+                    <div class="border-r border-slate-400/40 pr-4 text-center"><p class="text-[9px] text-slate-300 font-bold uppercase">外牆磚淨面積</p><p class="text-xl font-black"><span id="header-floor-area">0.00</span> <small class="text-[9px]">m²</small></p></div>
+                    <div class="border-r border-slate-400/40 pr-4 text-center"><p class="text-[9px] text-slate-300 font-bold uppercase">損耗率</p><p class="text-xl font-black" id="header-floor-loss">0%</p></div>
+                    <div class="text-center"><p class="text-[9px] text-slate-200 font-bold uppercase">預估總量</p><p class="text-2xl font-black" id="grand-floor-count">0</p></div>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-3 space-y-5">
+                <div class="panel p-5">
+                    <h3 class="font-black text-slate-800 mb-4 flex items-center gap-2 text-base"><span class="w-1 h-5 bg-slate-500 rounded-full"></span>外牆磚規格 & 損耗</h3>
+                    <div class="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-3"><span class="text-slate-800 font-black text-sm flex items-center gap-1">🏢 外牆磚</span><label class="text-[10px] font-bold text-slate-600 bg-slate-200 px-2 py-1 rounded-full">損耗+<input type="number" id="loss-floor" value="0" class="w-9 bg-transparent font-black text-slate-700 border-b border-slate-300 text-center" oninput="updateAll()">%</label></div>
+                        <div class="grid grid-cols-2 gap-3 mb-3">
+                            <div><label class="text-[9px] text-slate-700 font-black">磚寬 W (cm)</label><input type="number" id="tile-f-w" value="60" class="w-full border border-slate-300 rounded-xl p-2 text-sm font-bold bg-white" oninput="updateAll()"></div>
+                            <div><label class="text-[9px] text-slate-700 font-black">磚高 H (cm)</label><input type="number" id="tile-f-h" value="60" class="w-full border border-slate-300 rounded-xl p-2 text-sm font-bold bg-white" oninput="updateAll()"></div>
+                            <div><label class="text-[9px] text-slate-700 font-black">直縫隙 (cm)</label><input type="number" id="tile-f-jw" value="0.3" step="0.1" class="w-full border border-slate-300 rounded-xl p-2 text-sm" oninput="updateAll()"></div>
+                            <div><label class="text-[9px] text-slate-700 font-black">橫縫隙 (cm)</label><input type="number" id="tile-f-jh" value="0.3" step="0.1" class="w-full border border-slate-300 rounded-xl p-2 text-sm" oninput="updateAll()"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-[9px] font-black text-slate-700">交丁比例</label><select id="layout-floor" class="text-xs border rounded-xl p-2 bg-white" onchange="updateAll()"><option value="1">對縫 1/1</option><option value="0.5">半對 1/2</option><option value="0.333">三一 1/3</option><option value="0.25">四一 1/4</option></select></div>
+                            <div><label class="text-[9px] font-black text-slate-700">貼法走向</label><select id="dir-floor" class="text-xs border rounded-xl p-2 bg-white" onchange="updateAll()"><option value="H">橫縫連續</option><option value="V">直縫連續</option></select></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel p-5 border-l-[6px] border-l-slate-500">
+                    <div class="flex justify-between items-center mb-3"><h3 class="font-black text-slate-800 text-sm">🎯 起磚點座標 (cm)</h3><span class="text-[9px] bg-slate-100 text-slate-700 px-2 py-1 rounded-full font-bold">整磚從此點開始鋪設</span></div>
+                    <div id="origin-controls" class="space-y-3"></div>
+                    <p class="text-[10px] text-slate-400 mt-2 italic">※ 所有磁磚分割將以此點為基準向外延伸</p>
+                </div>
+
+                <div class="panel p-5 border-t-4 border-amber-400">
+                    <div class="flex justify-between items-center mb-3"><h3 class="font-black text-slate-800 text-sm">📐 開口 / 局部扣除</h3><button onclick="addOpening()" class="bg-amber-500 hover:bg-amber-600 text-white text-[11px] px-3 py-1.5 rounded-xl font-bold transition-all shadow">+ 新增區域</button></div>
+                    <div id="opening-list" class="space-y-2 max-h-[170px] overflow-y-auto pr-1 scrollbar-thin"></div>
+                </div>
+
+                <div class="panel p-5">
+                    <div class="flex justify-between items-center mb-3"><h3 class="font-black text-slate-800 text-sm">📍 鋪貼邊界 (多邊形節點)</h3><button onclick="addNewPoint()" class="bg-slate-700 text-white text-[10px] px-2.5 py-1.5 rounded-xl font-bold">+ 新增節點</button></div>
+                    <div class="flex gap-3 mb-3"><button onclick="toggleDrawMode()" id="btn-draw-mode" class="flex-1 bg-indigo-50 text-indigo-700 text-[11px] py-2 rounded-xl font-bold border border-indigo-200 hover:bg-indigo-100">✏️ 繪製模式</button><button onclick="toggleOrtho()" id="btn-ortho" class="flex-1 bg-slate-50 text-slate-700 text-[11px] py-2 rounded-xl font-bold border">📐 正交鎖定</button></div>
+                    <div id="points-list" class="space-y-2 max-h-[150px] overflow-y-auto"></div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-9 space-y-5">
+                <div id="capture-area" class="relative panel p-4 canvas-bg min-h-[540px] flex flex-col items-center justify-center transition-all">
+                    <div id="view-title" class="absolute top-5 left-5 text-slate-800 font-black bg-white/80 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm z-10 border text-xs tracking-wide"></div>
+                    <canvas id="mainCanvas" width="900" height="520" class="shadow-2xl bg-white rounded-2xl border border-slate-200"></canvas>
+                    <div id="pdf-footer-data" class="hidden mt-6 w-full grid grid-cols-5 gap-4 border-t border-slate-200 pt-5 bg-white">
+                        <div class="text-center"><p class="text-[9px] text-slate-500 font-black uppercase">淨面積</p><p class="text-2xl font-black"><span id="pdf-area">0</span> m²</p></div>
+                        <div class="text-center"><p class="text-[9px] text-blue-500 font-black uppercase">理論片數</p><p class="text-2xl font-black"><span id="pdf-theory">0</span></p></div>
+                        <div class="text-center"><p class="text-[9px] text-emerald-600 font-black uppercase">預估含損耗</p><p class="text-2xl font-black"><span id="pdf-count">0</span></p></div>
+                        <div class="text-center"><p class="text-[9px] text-amber-600 font-black uppercase">實際損耗</p><p class="text-2xl font-black text-amber-700"><span id="pdf-loss-pct">0%</span></p></div>
+                        <div class="text-center"><p class="text-[9px] text-slate-500 font-black uppercase">整磚 / ≤半磚</p><p class="text-2xl font-black"><span id="pdf-full">0</span> / <span id="pdf-half">0</span></p></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="panel p-3 border-l-4 border-slate-400 bg-white"><p class="text-[9px] font-black text-slate-500">淨面積 m²</p><p class="text-2xl font-black" id="stat-area">0</p></div>
+                    <div class="panel p-3 border-l-4 border-blue-400"><p class="text-[9px] font-black text-blue-500">理論片數</p><p class="text-2xl font-black" id="stat-theory">0</p></div>
+                    <div class="panel p-3 border-l-4 border-emerald-500"><p class="text-[9px] font-black text-emerald-600">預估含損耗</p><p class="text-2xl font-black" id="stat-count">0</p></div>
+                    <div class="panel p-3 border-l-4 border-amber-400"><p class="text-[9px] font-black text-amber-600">即時損耗率</p><p class="text-2xl font-black text-amber-700" id="stat-loss-pct">0%</p></div>
+                    <div class="panel p-3 bg-slate-800 text-white flex justify-around items-center"><div class="text-center"><p class="text-[9px] text-slate-300 uppercase">整磚</p><p class="text-2xl font-black text-blue-300" id="stat-full">0</p></div><div class="text-center"><p class="text-[9px] text-slate-300 uppercase">≤半磚</p><p class="text-2xl font-black text-amber-300" id="stat-half">0</p></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pdf-header-template" class="p-16 bg-white w-[1122px] text-slate-900" style="display:none">
+        <div class="flex justify-between items-start mb-16">
+            <div><h1 class="text-7xl font-black tracking-tighter mb-5 bg-gradient-to-r from-slate-800 to-blue-800 bg-clip-text text-transparent">外牆磚工程放樣報告</h1><p class="text-slate-500 font-bold uppercase tracking-wider border-l-4 border-slate-600 pl-5">起磚點精準分割 | 裁切判定</p></div>
+            <div class="text-right"><p class="text-sm font-bold text-slate-500 uppercase">施工位置</p><p class="text-4xl font-black text-slate-700" id="tpl-work-location">專案位置</p><p class="text-sm text-slate-400 mt-3" id="tpl-date"></p></div>
+        </div>
+        <div class="bg-slate-50 p-10 rounded-3xl border border-slate-200 w-full">
+            <h2 class="text-2xl font-black text-slate-800 mb-8 flex justify-between">外牆磚總結 <span class="text-slate-600">EXTERIOR TILE</span></h2>
+            <div class="grid grid-cols-2 gap-6 mb-5">
+                <div><p class="text-xs font-bold text-slate-400 mb-2">總淨面積</p><p class="text-5xl font-black"><span id="tpl-f-area">0.00</span> <small class="text-lg">m²</small></p></div>
+                <div class="text-right"><p class="text-xs font-bold text-slate-400 mb-2">預估總量 (含損耗)</p><p class="text-5xl font-black text-slate-700"><span id="tpl-f-count">0</span> <small class="text-lg">片</small></p></div>
+            </div>
+            <div class="border-t pt-5"><p class="text-xs font-bold text-slate-500 uppercase">實際總損耗率</p><p class="text-3xl font-black text-amber-600" id="tpl-f-loss">0%</p></div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        let points = [{x: 0, y: 0}, {x: 360, y: 0}, {x: 360, y: 240}, {x: 0, y: 240}];
+        let OFFSET = { x: 270, y: 140 };
+        let floorOrigin = { x: 0, y: 0 };      // 起磚點座標 (關鍵核心)
+        let floorOpenings = [];
+        let isDrawingMode = false;
+        let isOrtho = false;
+        let tempPoints = [];
+        let mousePos = { x: 0, y: 0 };
+        let draggedPointIdx = -1;
+        let currentStats = { full: 0, half: 0, area: 0, theory: 0, est: 0, lossPct: 0 };
+
+        function toCanvas(pt) { return { x: pt.x + OFFSET.x, y: pt.y + OFFSET.y }; }
+        function fromCanvas(pt) { return { x: pt.x - OFFSET.x, y: pt.y - OFFSET.y }; }
+
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            const raw = fromCanvas({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+            if(isDrawingMode && tempPoints.length>0){
+                const last = tempPoints[tempPoints.length-1];
+                if(isOrtho) {
+                    const dx = Math.abs(raw.x - last.x), dy = Math.abs(raw.y - last.y);
+                    mousePos = dx > dy ? { x: raw.x, y: last.y } : { x: last.x, y: raw.y };
+                } else mousePos = raw;
+            } else mousePos = raw;
+            if(draggedPointIdx !== -1){ points[draggedPointIdx] = {...mousePos}; updateAll(); }
+            if(isDrawingMode) updateAll();
+        });
+        canvas.addEventListener('mousedown', e => {
+            const rect = canvas.getBoundingClientRect();
+            const rawRaw = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            if(isDrawingMode){
+                if(e.button === 2){ if(tempPoints.length>2) { points = [...tempPoints]; finishDrawing(); } return; }
+                if(tempPoints.length===0){ OFFSET = { x: rawRaw.x, y: rawRaw.y }; tempPoints.push({x:0, y:0}); }
+                else tempPoints.push({...mousePos});
+                updateAll();
+            } else {
+                const hit = points.findIndex(p => Math.hypot(toCanvas(p).x - rawRaw.x, toCanvas(p).y - rawRaw.y) < 12);
+                if(hit !== -1) draggedPointIdx = hit;
+            }
+        });
+        window.addEventListener('mouseup', ()=> draggedPointIdx = -1);
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        function toggleDrawMode(){ isDrawingMode = !isDrawingMode; tempPoints = []; updateAll(); }
+        function toggleOrtho(){ isOrtho = !isOrtho; document.getElementById('btn-ortho').classList.toggle('ortho-active', isOrtho); }
+        function finishDrawing(){ isDrawingMode = false; updateAll(); }
+        function addNewPoint(){ const last = points[points.length-1]; points.push({ x: last.x+25, y: last.y+20 }); updateAll(); }
+        function removePoint(idx){ if(points.length<=3) return; points.splice(idx,1); updateAll(); }
+        function addOpening(){ floorOpenings.push({ w: 70, h: 70, left: 45, bottom: 45 }); updateAll(); }
+        function deleteOpening(idx){ floorOpenings.splice(idx,1); updateAll(); }
+
+        function pointInPoly(pt, poly){
+            let inside=false;
+            for(let i=0,j=poly.length-1; i<poly.length; j=i++){
+                if(((poly[i].y>pt.y) !== (poly[j].y>pt.y)) && (pt.x < (poly[j].x-poly[i].x)*(pt.y-poly[i].y)/(poly[j].y-poly[i].y)+poly[i].x)) inside=!inside;
+            } return inside;
+        }
+
+        function getTileStats(rect, poly, openings){
+            let insideCount=0; const grid=6;
+            const minX=Math.min(...poly.map(p=>p.x)), maxX=Math.max(...poly.map(p=>p.x));
+            const minY=Math.min(...poly.map(p=>p.y)), maxY=Math.max(...poly.map(p=>p.y));
+            const visibleW = Math.max(0, Math.min(maxX, rect.x+rect.w)-Math.max(minX, rect.x));
+            const visibleH = Math.max(0, Math.min(maxY, rect.y+rect.h)-Math.max(minY, rect.y));
+            const ratioW = visibleW/rect.w, ratioH = visibleH/rect.h;
+            for(let i=0;i<grid;i++) for(let j=0;j<grid;j++){
+                let pt = { x: rect.x+rect.w*((i+0.5)/grid), y: rect.y+rect.h*((j+0.5)/grid) };
+                let inOpen=false;
+                for(let op of openings) if(pt.x>=op.left && pt.x<=op.left+op.w && pt.y>=op.bottom && pt.y<=op.bottom+op.h){ inOpen=true; break; }
+                if(!inOpen && pointInPoly(pt, poly)) insideCount++;
+            }
+            let totalRatio = insideCount/(grid*grid);
+            let isFull = totalRatio>0.49 && ratioW>0.5 && ratioH>0.5;
+            let isHalf = totalRatio>0.05 && !isFull;
+            return { ratio:totalRatio, isFull, isHalf };
+        }
+
+        function drawDimension(ctx,text,x,y){
+            ctx.save();
+            let fx=x, fy=y;
+            ctx.font = "bold 9px 'Inter'";
+            let w = ctx.measureText(text).width+8;
+            ctx.fillStyle = "#1e293b"; ctx.beginPath(); ctx.roundRect(fx-w/2, fy-8, w, 14, 4); ctx.fill();
+            ctx.fillStyle = "white"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(text, fx, fy);
+            ctx.restore();
+        }
+
+        // 核心分割邏輯：完全依照起磚點 (floorOrigin) 為基準，向外延伸鋪設
+        function generateTilesFromOrigin() {
+            const tw = parseFloat(document.getElementById('tile-f-w').value);
+            const th = parseFloat(document.getElementById('tile-f-h').value);
+            const jw = parseFloat(document.getElementById('tile-f-jw').value);
+            const jh = parseFloat(document.getElementById('tile-f-jh').value);
+            const bond = parseFloat(document.getElementById('layout-floor').value);
+            const dir = document.getElementById('dir-floor').value;
+            
+            const unitW = tw + jw;
+            const unitH = th + jh;
+            const base = floorOrigin;  // 起磚點，整磚從此處開始
+            
+            // 計算邊界範圍
+            const minX = Math.min(...points.map(p=>p.x));
+            const maxX = Math.max(...points.map(p=>p.x));
+            const minY = Math.min(...points.map(p=>p.y));
+            const maxY = Math.max(...points.map(p=>p.y));
+            
+            // 擴展掃描範圍，確保涵蓋整個邊界
+            const scanMinX = minX - unitW * 2;
+            const scanMaxX = maxX + unitW * 2;
+            const scanMinY = minY - unitH * 2;
+            const scanMaxY = maxY + unitH * 2;
+            
+            let tiles = [];
+            
+            if (dir === 'H') {
+                // 橫縫連續：以起磚點為基準，向上向下產生列
+                // 計算起始列：找到第一個 <= scanMinY 且與起磚點對齊的 Y 座標
+                let startY = base.y;
+                while (startY - unitH >= scanMinY) startY -= unitH;
+                // 確保從正確的偏移開始
+                for (let y = startY; y <= scanMaxY; y += unitH) {
+                    // 計算交丁偏移 (橫向)
+                    const rowIndex = Math.floor(Math.round((y - base.y) / unitH));
+                    const step = Math.max(1, Math.round(1 / bond));
+                    let mod = ((rowIndex % step) + step) % step;
+                    let xOffset = (bond < 1) ? mod * unitW * bond : 0;
+                    
+                    let startX = base.x + xOffset;
+                    // 向左延伸直到覆蓋 scanMinX
+                    while (startX - unitW >= scanMinX) startX -= unitW;
+                    
+                    for (let x = startX; x <= scanMaxX; x += unitW) {
+                        tiles.push({ x: x, y: y });
+                    }
+                }
+            } else {
+                // 直縫連續：以起磚點為基準，向左向右產生行
+                let startX = base.x;
+                while (startX - unitW >= scanMinX) startX -= unitW;
+                for (let x = startX; x <= scanMaxX; x += unitW) {
+                    const colIndex = Math.floor(Math.round((x - base.x) / unitW));
+                    const step = Math.max(1, Math.round(1 / bond));
+                    let mod = ((colIndex % step) + step) % step;
+                    let yOffset = (bond < 1) ? mod * unitH * bond : 0;
+                    
+                    let startY = base.y + yOffset;
+                    while (startY - unitH >= scanMinY) startY -= unitH;
+                    
+                    for (let y = startY; y <= scanMaxY; y += unitH) {
+                        tiles.push({ x: x, y: y });
+                    }
+                }
+            }
+            
+            return tiles;
+        }
+
+        function drawScene(){
+            const tw = parseFloat(document.getElementById('tile-f-w').value);
+            const th = parseFloat(document.getElementById('tile-f-h').value);
+            const tiles = generateTilesFromOrigin();
+            
+            const minX = Math.min(...points.map(p=>p.x));
+            const maxX = Math.max(...points.map(p=>p.x));
+            const minY = Math.min(...points.map(p=>p.y));
+            const maxY = Math.max(...points.map(p=>p.y));
+            
+            let full = 0, half = 0, tileIdx = 1;
+            let tileMap = new Map();
+            
+            // 先收集所有磁磚，計算裁切狀態並繪製
+            tiles.forEach(tile => {
+                const rect = { x: tile.x, y: tile.y, w: tw, h: th };
+                const stat = getTileStats(rect, points, floorOpenings);
+                if (stat.ratio > 0.05) {
+                    if (stat.isFull) full++;
+                    else if (stat.isHalf) half++;
+                    
+                    const cp = toCanvas(tile);
+                    // 繪製磁磚
+                    ctx.fillStyle = stat.isFull ? '#ffffff' : '#fff7ed';
+                    ctx.fillRect(cp.x, cp.y, tw, th);
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.strokeRect(cp.x, cp.y, tw, th);
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = "8px sans-serif";
+                    ctx.fillText(tileIdx++, cp.x + 3, cp.y + 12);
+                    
+                    // 計算格線索引用於邊界判定
+                    const unitW = tw + parseFloat(document.getElementById('tile-f-jw').value);
+                    const unitH = th + parseFloat(document.getElementById('tile-f-jh').value);
+                    const c = Math.round((tile.x - floorOrigin.x) / unitW);
+                    const r = Math.round((tile.y - floorOrigin.y) / unitH);
+                    tileMap.set(`${c},${r}`, { x: tile.x, y: tile.y, cp, stat });
+                }
+            });
+            
+            // 標註非整磚邊界尺寸 (寬度 / 高度裁切)
+            tileMap.forEach((tile, key) => {
+                const [c, r] = key.split(',').map(Number);
+                const twVal = tw, thVal = th;
+                
+                // 檢查左右是否有鄰磚，若無則標註實際保留寬度
+                const hasLeft = tileMap.has(`${c-1},${r}`);
+                const hasRight = tileMap.has(`${c+1},${r}`);
+                if (!hasLeft || !hasRight) {
+                    const actualW = Math.min(maxX, tile.x + twVal) - Math.max(minX, tile.x);
+                    if (actualW > 1 && actualW < twVal * 0.98) {
+                        const drawX = !hasLeft ? tile.cp.x + actualW/2 : tile.cp.x + twVal - actualW/2;
+                        drawDimension(ctx, `${actualW.toFixed(1)}cm`, drawX, tile.cp.y + thVal/2);
+                    }
+                }
+                
+                // 檢查上下是否有鄰磚
+                const hasTop = tileMap.has(`${c},${r-1}`);
+                const hasBottom = tileMap.has(`${c},${r+1}`);
+                if (!hasTop || !hasBottom) {
+                    const actualH = Math.min(maxY, tile.y + thVal) - Math.max(minY, tile.y);
+                    if (actualH > 1 && actualH < thVal * 0.98) {
+                        const drawY = !hasTop ? tile.cp.y + actualH/2 : tile.cp.y + thVal - actualH/2;
+                        drawDimension(ctx, `${actualH.toFixed(1)}cm`, tile.cp.x + twVal/2, drawY);
+                    }
+                }
+            });
+            
+            // 繪製開口扣除區域
+            floorOpenings.forEach(op => {
+                let cp = toCanvas({ x: op.left, y: op.bottom });
+                ctx.fillStyle = 'rgba(251,146,60,0.25)';
+                ctx.fillRect(cp.x, cp.y, op.w, op.h);
+                ctx.strokeStyle = '#f97316';
+                ctx.setLineDash([5, 3]);
+                ctx.strokeRect(cp.x, cp.y, op.w, op.h);
+                drawDimension(ctx, `扣除 ${op.w}x${op.h}`, cp.x + op.w/2, cp.y + op.h/2);
+            });
+            ctx.setLineDash([]);
+            
+            // 繪製邊界多邊形與標註
+            points.forEach((p, i) => {
+                let n = points[(i + 1) % points.length];
+                let c1 = toCanvas(p), c2 = toCanvas(n);
+                ctx.beginPath();
+                ctx.moveTo(c1.x, c1.y);
+                ctx.lineTo(c2.x, c2.y);
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                let midX = (c1.x + c2.x) / 2, midY = (c1.y + c2.y) / 2;
+                let dist = Math.hypot(n.x - p.x, n.y - p.y);
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(midX, midY, 13, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#3b82f6';
+                ctx.stroke();
+                ctx.fillStyle = '#1e3a8a';
+                ctx.font = "bold 9px sans-serif";
+                ctx.fillText(`W${i+1}`, midX, midY);
+                drawDimension(ctx, `${Math.round(dist)}cm`, midX, midY);
+                drawPointMarker(ctx, `P${i+1}`, c1.x, c1.y);
+            });
+            
+            // 標記起磚點
+            let originCp = toCanvas(floorOrigin);
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(originCp.x, originCp.y, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = 'white';
+            ctx.font = "bold 8px sans-serif";
+            ctx.fillText("起點", originCp.x - 12, originCp.y - 5);
+            
+            return { full, half };
+        }
+
+        function drawPointMarker(ctx, lbl, x, y) {
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(lbl, x, y);
+        }
+
+        function updateAll(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if(isDrawingMode){
+                ctx.beginPath();
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2.5;
+                tempPoints.forEach((p,i) => i===0 ? ctx.moveTo(toCanvas(p).x, toCanvas(p).y) : ctx.lineTo(toCanvas(p).x, toCanvas(p).y));
+                if(tempPoints.length > 0) ctx.lineTo(toCanvas(mousePos).x, toCanvas(mousePos).y);
+                ctx.stroke();
+                document.getElementById('view-title').innerText = "✏️ 繪製邊界模式 (右鍵完成)";
+                return;
+            }
+            
+            let stats = drawScene();
+            const fw = parseFloat(document.getElementById('tile-f-w').value);
+            const fh = parseFloat(document.getElementById('tile-f-h').value);
+            const fjw = parseFloat(document.getElementById('tile-f-jw').value);
+            const fjh = parseFloat(document.getElementById('tile-f-jh').value);
+            const lossF = 1 + parseFloat(document.getElementById('loss-floor').value) / 100;
+            
+            // 計算多邊形面積 (鞋帶公式)
+            let a = 0;
+            for(let i = 0; i < points.length; i++){
+                let j = (i + 1) % points.length;
+                a += points[i].x * points[j].y;
+                a -= points[j].x * points[i].y;
+            }
+            let rawArea = Math.abs(a) / 20000;
+            floorOpenings.forEach(op => rawArea -= (op.w * op.h) / 10000);
+            let area = Math.max(0, rawArea);
+            let theory = area / ((fw + fjw) * (fh + fjh) / 10000);
+            let est = Math.ceil((stats.full + stats.half * 0.5) * lossF);
+            let lossPct = theory > 0 ? (((est / theory) - 1) * 100).toFixed(1) : "0";
+            
+            currentStats = { full: stats.full, half: stats.half, area: area, theory: theory, est: est, lossPct: lossPct };
+            
+            document.getElementById('stat-area').innerText = area.toFixed(2);
+            document.getElementById('stat-theory').innerText = theory.toFixed(1);
+            document.getElementById('stat-count').innerText = est;
+            document.getElementById('stat-loss-pct').innerText = lossPct + "%";
+            document.getElementById('stat-full').innerText = stats.full;
+            document.getElementById('stat-half').innerText = stats.half;
+            document.getElementById('pdf-area').innerText = area.toFixed(2);
+            document.getElementById('pdf-theory').innerText = theory.toFixed(1);
+            document.getElementById('pdf-count').innerText = est;
+            document.getElementById('pdf-loss-pct').innerText = lossPct + "%";
+            document.getElementById('pdf-full').innerText = stats.full;
+            document.getElementById('pdf-half').innerText = stats.half;
+            document.getElementById('header-floor-area').innerText = area.toFixed(2);
+            document.getElementById('header-floor-loss').innerText = lossPct + "%";
+            document.getElementById('grand-floor-count').innerText = est;
+            document.getElementById('view-title').innerHTML = `🏢 外牆磚鋪貼 | 起磚點 (${floorOrigin.x}, ${floorOrigin.y}) cm | 橘色區塊為扣除區域`;
+            
+            renderOriginControls();
+            renderOpenings();
+            renderPointList();
+        }
+        
+        function renderOriginControls(){
+            const container = document.getElementById('origin-controls');
+            container.innerHTML = `<div class="grid grid-cols-2 gap-4">
+                <div><label class="text-[10px] block mb-1 font-bold">起磚 X (cm) <span class="text-red-500">*整磚基準</span></label>
+                <input type="number" step="0.1" value="${floorOrigin.x}" class="w-full border rounded-xl p-2 text-sm" oninput="floorOrigin.x=parseFloat(this.value)||0; updateAll();"></div>
+                <div><label class="text-[10px] block mb-1 font-bold">起磚 Y (cm) <span class="text-red-500">*整磚基準</span></label>
+                <input type="number" step="0.1" value="${floorOrigin.y}" class="w-full border rounded-xl p-2 text-sm" oninput="floorOrigin.y=parseFloat(this.value)||0; updateAll();"></div>
+            </div>`;
+        }
+        
+        function renderOpenings(){
+            const container = document.getElementById('opening-list');
+            if(!floorOpenings.length){ container.innerHTML = '<div class="text-center text-slate-400 text-[11px] py-3 italic">尚未加入扣除區域</div>'; return; }
+            container.innerHTML = floorOpenings.map((op,i)=>`<div class="bg-white p-2.5 rounded-xl border shadow-sm relative">
+                <div class="grid grid-cols-4 gap-2 mb-1">
+                    <div>寬<input type="number" step="0.1" value="${op.w}" class="w-full border rounded-md px-1 text-xs" oninput="floorOpenings[${i}].w=parseFloat(this.value)||0; updateAll();"></div>
+                    <div>高<input type="number" step="0.1" value="${op.h}" class="w-full border rounded-md px-1 text-xs" oninput="floorOpenings[${i}].h=parseFloat(this.value)||0; updateAll();"></div>
+                    <div>X起點<input type="number" step="0.1" value="${op.left}" class="w-full border rounded-md px-1 text-xs" oninput="floorOpenings[${i}].left=parseFloat(this.value)||0; updateAll();"></div>
+                    <div>Y起點<input type="number" step="0.1" value="${op.bottom}" class="w-full border rounded-md px-1 text-xs" oninput="floorOpenings[${i}].bottom=parseFloat(this.value)||0; updateAll();"></div>
+                </div>
+                <button onclick="deleteOpening(${i})" class="absolute top-1 right-2 text-red-500 font-bold text-sm">✕</button>
+            </div>`).join('');
+        }
+        
+        function renderPointList(){
+            document.getElementById('points-list').innerHTML = points.map((p,i)=>`<div class="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border">
+                <span class="w-6 font-black text-sm text-blue-600">P${i+1}</span>
+                <input type="number" step="0.1" value="${p.x}" class="w-full border rounded-md px-2 py-1 text-xs" oninput="points[${i}].x=parseFloat(this.value)||0; updateAll();">
+                <input type="number" step="0.1" value="${p.y}" class="w-full border rounded-md px-2 py-1 text-xs" oninput="points[${i}].y=parseFloat(this.value)||0; updateAll();">
+                <button onclick="removePoint(${i})" class="text-red-500 font-bold px-2">✕</button>
+            </div>`).join('');
+        }
+        
+        async function exportExteriorPDF() {
+            const btn = document.getElementById('btn-pdf-exterior');
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "產製中...";
+            
+            updateAll();
+            await new Promise(r => setTimeout(r, 50));
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('l', 'mm', 'a4');
+            const headerDiv = document.getElementById('pdf-header-template');
+            headerDiv.style.display = 'block';
+            
+            document.getElementById('tpl-work-location').innerText = document.getElementById('header-work-location').value || "未命名專案";
+            document.getElementById('tpl-date').innerText = "報告日期：" + new Date().toLocaleString('zh-TW');
+            document.getElementById('tpl-f-area').innerText = currentStats.area.toFixed(2);
+            document.getElementById('tpl-f-count').innerText = currentStats.est;
+            document.getElementById('tpl-f-loss').innerText = currentStats.lossPct + "%";
+            
+            const coverCanvas = await html2canvas(headerDiv, {scale: 1.2});
+            doc.addImage(coverCanvas.toDataURL('image/jpeg',0.85), 'JPEG', 0, 0, 297, 210);
+            headerDiv.style.display = 'none';
+            
+            const footerDiv = document.getElementById('pdf-footer-data');
+            footerDiv.classList.remove('hidden');
+            const capture = document.getElementById('capture-area');
+            
+            updateAll();
+            await new Promise(r => setTimeout(r, 80));
+            let img = await html2canvas(capture, {scale: 1.3, logging: false});
+            doc.addPage();
+            doc.addImage(img.toDataURL('image/jpeg',0.8), 'JPEG', 0, 0, 297, 210);
+            
+            footerDiv.classList.add('hidden');
+            const projectName = document.getElementById('header-work-location').value || 'project';
+            doc.save(`外牆磚放樣報告_${projectName}.pdf`);
+            
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+        
+        window.onload = updateAll;
+    </script>
+</body>
+</html>
